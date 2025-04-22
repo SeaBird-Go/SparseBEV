@@ -5,6 +5,7 @@ import logging
 import argparse
 import importlib
 import torch
+import torch.nn as nn
 import torch.distributed as dist
 from datetime import datetime
 from mmcv import Config, DictAction
@@ -23,6 +24,8 @@ def main():
     parser.add_argument('--override', nargs='+', action=DictAction)
     parser.add_argument('--local_rank', type=int, default=0)
     parser.add_argument('--world_size', type=int, default=1)
+    parser.add_argument('--work-dir', type=str, default=None)
+    parser.add_argument('--sync_bn', action='store_true')
     args = parser.parse_args()
 
     # parse configs
@@ -60,7 +63,9 @@ def main():
             work_dir = os.path.dirname(cfgs.resume_from)
         else:
             run_name = ''
-            if not cfgs.debug:
+            if args.work_dir is not None:
+                run_name = args.work_dir
+            elif not cfgs.debug:
                 run_name = input('Name your run (leave blank for default): ')
             if run_name == '':
                 run_name = datetime.now().strftime("%Y-%m-%d/%H-%M-%S")
@@ -128,6 +133,9 @@ def main():
     logging.info('Batch size per GPU: %d' % (cfgs.batch_size // world_size))
 
     if world_size > 1:
+        if args.sync_bn:
+            logging.info('================Using SyncBN================')
+            model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
         model = MMDistributedDataParallel(model, [local_rank], broadcast_buffers=False)
     else:
         model = MMDataParallel(model, [0])
@@ -153,9 +161,9 @@ def main():
 
     if cfgs.eval_config['interval'] > 0:
         if world_size > 1:
-            runner.register_hook(DistEvalHook(val_loader, interval=cfgs.eval_config['interval'], gpu_collect=True))
+            runner.register_hook(DistEvalHook(val_loader, gpu_collect=True, **cfgs.eval_config))
         else:
-            runner.register_hook(EvalHook(val_loader, interval=cfgs.eval_config['interval']))
+            runner.register_hook(EvalHook(val_loader, **cfgs.eval_config))
 
     if cfgs.resume_from is not None:
         logging.info('Resuming from %s' % cfgs.resume_from)

@@ -1,3 +1,11 @@
+'''
+Copyright (c) 2025 by Haiming Zhang. All Rights Reserved.
+
+Author: Haiming Zhang
+Date: 2025-04-21 15:28:21
+Email: haimingzhang@link.cuhk.edu.cn
+Description: Use the 1/4 training data.
+'''
 dataset_type = 'CustomNuScenesDataset'
 dataset_root = 'data/nuscenes/'
 
@@ -155,7 +163,7 @@ data = dict(
     workers_per_gpu=8,
     train=dict(
         type=dataset_type,
-        load_interval=2,
+        load_interval=4,
         data_root=dataset_root,
         ann_file=dataset_root + 'nuscenes_infos_train_sweep.pkl',
         pipeline=train_pipeline,
@@ -219,20 +227,19 @@ revise_keys = [('backbone', 'img_backbone')]
 resume_from = None
 
 # checkpointing
-checkpoint_config = dict(interval=1, max_keep_ckpts=3)
+checkpoint_config = dict(interval=1, max_keep_ckpts=1)
 
 # logging
 log_config = dict(
     interval=1,
     hooks=[
-        dict(type='MyTextLoggerHook', interval=50, reset_flag=True),
+        dict(type='MyTextLoggerHook', interval=1, reset_flag=True),
         dict(type='MyTensorboardLoggerHook', interval=500, reset_flag=True)
     ]
 )
 
 # evaluation
-eval_config = dict(interval=total_epochs,
-                   dynamic_intervals=[(22, 1)])
+eval_config = dict(interval=total_epochs)
 
 # other flags
 debug = False
