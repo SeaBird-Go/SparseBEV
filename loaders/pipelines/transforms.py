@@ -4,6 +4,7 @@ import numpy as np
 from PIL import Image
 from numpy import random
 from mmdet.datasets.builder import PIPELINES
+from copy import deepcopy
 
 
 @PIPELINES.register_module()
@@ -224,6 +225,7 @@ class RandomTransformImage(object):
     def __call__(self, results):
         resize, resize_dims, crop, flip, rotate = self.sample_augmentation()
         
+        aug_mats = []
         if len(results['lidar2img']) == len(results['img']):
             for i in range(len(results['img'])):
                 img = Image.fromarray(np.uint8(results['img'][i]))
@@ -239,6 +241,8 @@ class RandomTransformImage(object):
                 )
                 results['img'][i] = np.array(img).astype(np.uint8)
                 results['lidar2img'][i] = ida_mat @ results['lidar2img'][i]
+                results['cam_intrinsics'][i] = ida_mat @ results['cam_intrinsics'][i]
+                aug_mats.append(ida_mat)
 
         elif len(results['img']) == 6:
             for i in range(len(results['img'])):
@@ -264,6 +268,7 @@ class RandomTransformImage(object):
         results['ori_shape'] = [img.shape for img in results['img']]
         results['img_shape'] = [img.shape for img in results['img']]
         results['pad_shape'] = [img.shape for img in results['img']]
+        results["aug_mats"] = aug_mats
 
         return results
 
@@ -392,3 +397,143 @@ class GlobalRotScaleTransImage(object):
 
         for view in range(len(results['lidar2img'])):
             results['lidar2img'][view] = (torch.tensor(results['lidar2img'][view]).float() @ scale_mat_inv).numpy()
+
+
+@PIPELINES.register_module()
+class PrepapreImageInputs(object):
+    """Prepare the original mage inputs for the SSL.
+    """
+    def __init__(self, 
+                 img_size, 
+                 norm_cfg=None,
+                 load_future_img=False,
+                 load_prev_img=False,
+                 **kwargs):
+        self.input_size = img_size  # (h, w)
+        if norm_cfg is not None:
+            self.mean = norm_cfg['mean']
+            self.std = norm_cfg['std']
+        else:
+            self.mean = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+            self.std = np.array([255.0, 255.0, 255.0], dtype=np.float32)
+
+        self.load_prev_img = load_prev_img
+        self.load_future_img = load_future_img
+    
+    def transform_core(self, 
+                       img, 
+                       img_size, # (h, w)
+                       to_rgb=True):
+        ## we need [0, 1] images in RGB order
+        img = mmcv.imresize(img, img_size[::-1])
+        img = mmcv.imnormalize(np.array(img), self.mean, self.std, to_rgb)
+        return img
+    
+    def __call__(self, results):
+        img_aug = deepcopy(results['img'])
+
+        ## resize the image
+        imgs = [
+            self.transform_core(img, self.input_size)
+            for img in img_aug
+        ]
+
+        # process multiple imgs in single frame
+        imgs = [img.transpose(2, 0, 1) for img in imgs]  # to (c, h, w)
+        results['target_imgs'] = np.ascontiguousarray(np.stack(imgs, axis=0))
+
+        if 'aug_mats' in results.keys():
+            aug_mats = np.stack(results['aug_mats'])
+            results['K'] = torch.from_numpy(
+                aug_mats @ np.asarray(results['cam_intrinsics'])).to(torch.float32)
+        else:
+            results['K'] = torch.from_numpy(
+                np.asarray(results['cam_intrinsics'])).to(torch.float32)
+        
+        ## process the intrinsic matrix
+        img_shape = results['img_shape'][0]
+        img_h, img_w = img_shape[0], img_shape[1]
+        h, w = self.input_size[0], self.input_size[1]
+        results['K'][:, 0] *= w / img_w
+        results['K'][:, 1] *= h / img_h
+        results['inv_K'] = torch.pinverse(results['K'])
+        results['projection_mat'] = np.float32(
+            np.stack(results['lidar2img']))
+        return results
+    
+
+@PIPELINES.register_module()
+class PointToMultiViewDepth(object):
+    def __init__(self, 
+                 depth_scale=(1.0, 50.0), 
+                 downsample=1, 
+                 render_size=(224, 352)):
+        self.downsample = downsample
+        self.depth_scale = depth_scale
+        self.render_size = render_size
+
+    def __call__(self, results):
+        points_lidar = results['points']
+        img_ori_shape = results['img_shape']
+
+        lidarseg = None
+        if 'lidarseg' in results.keys() and \
+            not isinstance(results['lidarseg'], str):
+            lidarseg = results['lidarseg']
+            
+            pts_semantic_mask = results.get('pts_semantic_mask', None)
+            if pts_semantic_mask is not None:
+                lidarseg = lidarseg[pts_semantic_mask]
+
+        depth_map_list = []
+        semantic_map_list = []
+
+        for cid in range(len(img_ori_shape)):
+            lidar2img = torch.from_numpy(results['lidar2img'][cid]).float()  # (4, 4)
+            _img_ori_shape = img_ori_shape[cid]
+            
+            points_img = points_lidar.tensor[:, :3].matmul(
+                lidar2img[:3, :3].T) + lidar2img[:3, 3].unsqueeze(0)
+            points_img = torch.cat(
+                [points_img[:, :2] / points_img[:, 2:3], points_img[:, 2:3]],
+                1)
+
+            depth_map_raw, semantic_map = self.points2depth_and_semantic(
+                points_img, _img_ori_shape, 
+                self.render_size[0], self.render_size[1], lidarseg
+            )
+            
+            depth_map_list.append(depth_map_raw)
+            semantic_map_list.append(semantic_map)
+            # intricics_list.append(cam2img)
+            # pose_spatial_list.append(cam2camego)
+
+        results['render_gt_depth'] = torch.stack(depth_map_list)
+        results['render_gt_semantic'] = torch.stack(semantic_map_list)
+        return results
+    
+    def points2depth_and_semantic(self, points, img_shape, height, width, semantic=None):
+        rH, rW = img_shape[0], img_shape[1]
+        height, width = height, width
+        depth_map = torch.zeros((height, width), dtype=torch.float32)
+        semantic_map = torch.ones((height, width), dtype=torch.long) * 255
+        coor = torch.round(points[:, :2] / torch.Tensor([rW/width, rH/height]))
+        depth = points[:, 2]
+        kept1 = (coor[:, 0] >= 0) & (coor[:, 0] < width) & (
+                 coor[:, 1] >= 0) & (coor[:, 1] < height) & (
+                 depth < self.depth_scale[1]) & (
+                 depth >= self.depth_scale[0])
+        if semantic is None or type(semantic) == str:
+            semantic = depth
+        coor, depth, semantic = coor[kept1], depth[kept1], semantic[kept1]
+        ranks = coor[:, 0] + coor[:, 1] * width
+        sort = (ranks + depth / 100.).argsort()
+        coor, depth, ranks, semantic = coor[sort], depth[sort], ranks[sort], semantic[sort]
+
+        kept2 = torch.ones(coor.shape[0], device=coor.device, dtype=torch.bool)
+        kept2[1:] = (ranks[1:] != ranks[:-1])
+        coor, depth, semantic = coor[kept2], depth[kept2], semantic[kept2]
+        coor = coor.to(torch.long)
+        depth_map[coor[:, 1], coor[:, 0]] = depth
+        semantic_map[coor[:, 1], coor[:, 0]] = semantic.long()
+        return depth_map, semantic_map

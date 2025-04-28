@@ -50,13 +50,15 @@ class CustomNuScenesDataset(NuScenesDataset):
             ego2global_rotation=ego2global_rotation,
             lidar2ego_translation=lidar2ego_translation,
             lidar2ego_rotation=lidar2ego_rotation,
+            pts_filename=info['lidar_path'],
         )
 
         if self.modality['use_camera']:
             img_paths = []
             img_timestamps = []
             lidar2img_rts = []
-
+            cam_intrinsics = []
+            lidar2cam_rts = []
             for _, cam_info in info['cams'].items():
                 img_paths.append(os.path.relpath(cam_info['data_path']))
                 img_timestamps.append(cam_info['timestamp'] / 1e6)
@@ -68,17 +70,27 @@ class CustomNuScenesDataset(NuScenesDataset):
                 lidar2cam_rt = np.eye(4)
                 lidar2cam_rt[:3, :3] = lidar2cam_r.T
                 lidar2cam_rt[3, :3] = -lidar2cam_t
+
+                cam2lidar_r = cam_info['sensor2lidar_rotation']
+                cam2lidar_t = cam_info['sensor2lidar_translation']
+                cam2lidar = np.eye(4)
+                cam2lidar[:3, :3] = cam2lidar_r
+                cam2lidar[3, :3] = cam2lidar_t
                 
                 intrinsic = cam_info['cam_intrinsic']
                 viewpad = np.eye(4)
                 viewpad[:intrinsic.shape[0], :intrinsic.shape[1]] = intrinsic
                 lidar2img_rt = (viewpad @ lidar2cam_rt.T)
                 lidar2img_rts.append(lidar2img_rt)
+                cam_intrinsics.append(viewpad)
+                lidar2cam_rts.append(np.linalg.inv(cam2lidar))
 
             input_dict.update(dict(
                 img_filename=img_paths,
                 img_timestamp=img_timestamps,
                 lidar2img=lidar2img_rts,
+                cam_intrinsics=cam_intrinsics,
+                lidar2cam=np.stack(lidar2cam_rts),
             ))
 
         if not self.test_mode:
@@ -86,3 +98,39 @@ class CustomNuScenesDataset(NuScenesDataset):
             input_dict['ann_info'] = annos
 
         return input_dict
+
+
+@DATASETS.register_module()
+class CustomNuScenesDatasetOverfit(CustomNuScenesDataset):
+    """Custom NuScenes dataset for overfitting."""
+
+    def __len__(self):
+        return 1000
+    
+    def __getitem__(self, idx):
+        idx = 50
+        return super().__getitem__(idx)
+    
+
+@DATASETS.register_module()
+class CustomNuScenesDatasetOverfitVal(CustomNuScenesDatasetOverfit):
+    """Custom NuScenes dataset for overfitting for validation set just for 
+    visualization.
+    """
+
+    def __len__(self):
+        return 4
+    
+    def evaluate(self,
+                 results,
+                 metric='bbox',
+                 logger=None,
+                 jsonfile_prefix=None,
+                 result_names=['pts_bbox'],
+                 show=False,
+                 out_dir=None,
+                 pipeline=None):
+        return {"bbox_mAP": 0.5, 
+                "bbox_mAP_50": 0.5, 
+                "bbox_mAP_75": 0.5}
+    

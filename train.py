@@ -71,13 +71,13 @@ def main():
                 run_name = datetime.now().strftime("%Y-%m-%d/%H-%M-%S")
 
             work_dir = os.path.join('outputs', cfgs.model.type, run_name)
-            if os.path.exists(work_dir):  # must be an empty dir
-                if input('Path "%s" already exists, overwrite it? [Y/n] ' % work_dir) == 'n':
-                    print('Bye.')
-                    exit(0)
-                shutil.rmtree(work_dir)
+            # if os.path.exists(work_dir):  # must be an empty dir
+            #     if input('Path "%s" already exists, overwrite it? [Y/n] ' % work_dir) == 'n':
+            #         print('Bye.')
+            #         exit(0)
+            #     shutil.rmtree(work_dir)
 
-            os.makedirs(work_dir, exist_ok=False)
+            os.makedirs(work_dir, exist_ok=True)
 
         # init logging, backup code
         utils.init_logging(os.path.join(work_dir, 'train.log'), cfgs.debug)
