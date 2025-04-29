@@ -442,12 +442,7 @@ class PrepapreImageInputs(object):
         imgs = [img.transpose(2, 0, 1) for img in imgs]  # to (c, h, w)
         results['target_imgs'] = np.ascontiguousarray(np.stack(imgs, axis=0))
 
-        if 'aug_mats' in results.keys():
-            aug_mats = np.stack(results['aug_mats'])
-            results['K'] = torch.from_numpy(
-                aug_mats @ np.asarray(results['cam_intrinsics'])).to(torch.float32)
-        else:
-            results['K'] = torch.from_numpy(
+        results['K'] = torch.from_numpy(
                 np.asarray(results['cam_intrinsics'])).to(torch.float32)
         
         ## process the intrinsic matrix

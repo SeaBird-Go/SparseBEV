@@ -234,10 +234,6 @@ train_pipeline = [
         use_dim=5,
     ),
     dict(type='LoadMultiViewImageFromFiles', to_float32=False, color_type='color'),
-    # dict(type='LoadMultiViewImageFromMultiSweeps', sweeps_num=num_frames - 1),
-    # dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True, with_attr_label=False),
-    # dict(type='ObjectRangeFilter', point_cloud_range=point_cloud_range),
-    # dict(type='ObjectNameFilter', classes=class_names),
     dict(type='RandomTransformImage', ida_aug_conf=ida_aug_conf, training=True),
     dict(type="PrepapreImageInputs", img_size=render_size),
     dict(type="PointToMultiViewDepth",
@@ -280,7 +276,6 @@ data = dict(
     workers_per_gpu=4,
     train=dict(
         type=dataset_type,
-        load_interval=4,
         data_root=dataset_root,
         ann_file=dataset_root + 'nuscenes_infos_train_sweep.pkl',
         pipeline=train_pipeline,
@@ -335,7 +330,7 @@ lr_config = dict(
     min_lr_ratio=1e-3
 )
 total_epochs = 24
-batch_size = 4
+batch_size = 8
 
 # load pretrained weights
 load_from = 'pretrain/cascade_mask_rcnn_r50_fpn_coco-20e_20e_nuim_20201009_124951-40963960.pth'

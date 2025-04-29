@@ -55,7 +55,7 @@ class SparseBEVPretrain(MVXTwoStageDetector):
         self.stop_prev_grad = stop_prev_grad
         self.color_aug = GpuPhotoMetricDistortion()
         self.grid_mask = GridMask(ratio=0.5, prob=0.7)
-        self.use_grid_mask = True
+        self.use_grid_mask = False
 
         if lifter is not None:
             self.lifter = builder.build_head(lifter)
@@ -236,20 +236,8 @@ class SparseBEVPretrain(MVXTwoStageDetector):
                 Defaults to None.
             img_metas (list[dict], optional): Meta information of each sample.
                 Defaults to None.
-            gt_bboxes_3d (list[:obj:`BaseInstance3DBoxes`], optional):
-                Ground truth 3D boxes. Defaults to None.
-            gt_labels_3d (list[torch.Tensor], optional): Ground truth labels
-                of 3D boxes. Defaults to None.
-            gt_labels (list[torch.Tensor], optional): Ground truth labels
-                of 2D boxes in images. Defaults to None.
-            gt_bboxes (list[torch.Tensor], optional): Ground truth 2D boxes in
-                images. Defaults to None.
             img (torch.Tensor optional): Images of each sample with shape
                 (N, C, H, W). Defaults to None.
-            proposals ([list[torch.Tensor], optional): Predicted proposals
-                used for training Fast RCNN. Defaults to None.
-            gt_bboxes_ignore (list[torch.Tensor], optional): Ground truth
-                2D boxes in images to be ignored. Defaults to None.
         Returns:
             dict: Losses of different branches.
         """
@@ -273,10 +261,10 @@ class SparseBEVPretrain(MVXTwoStageDetector):
         result_dict = self.inner_forward(
             img_metas=img_metas, img=img, **kwargs)
         
-        local_rank, _ = get_dist_info()
         ## visualize
+        local_rank, _ = get_dist_info()
         if local_rank == 0:
-            save_dir = f'outputs/vis'
+            save_dir = f'outputs/SparseBEVPretrain/r50_nuimg_704x256_gs_25600_rgb_only_pretrain_overfit_wo_grid_mask_864x1600/vis'
             os.makedirs(save_dir, exist_ok=True)
             ## visualize the results
             render_rgb = result_dict['render_rgb']
@@ -295,9 +283,12 @@ class SparseBEVPretrain(MVXTwoStageDetector):
                 )
             ]
             
-            if 'render_depth' in result_dict.keys():
+            if 'render_gt_depth' in kwargs.keys():
                 render_depth = result_dict['render_depth'].squeeze(2)
                 gt_depth = kwargs['render_gt_depth']
+
+                print(f"render depth: min: {render_depth.min()} max: {render_depth.max()}")
+                print(f"render_gt_depth depth: min: {gt_depth.min()} max: {gt_depth.max()}")
 
                 vis_elements_list.extend(
                     [
@@ -314,7 +305,6 @@ class SparseBEVPretrain(MVXTwoStageDetector):
                 )
                 
             target_size = (render_rgb.shape[-2], render_rgb.shape[-1])  # (H, W)
-            # target_size = (180, 320)
             visualize_elements(
                 vis_elements_list,
                 target_size=target_size,

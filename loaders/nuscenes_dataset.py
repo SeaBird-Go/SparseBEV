@@ -75,7 +75,7 @@ class CustomNuScenesDataset(NuScenesDataset):
                 cam2lidar_t = cam_info['sensor2lidar_translation']
                 cam2lidar = np.eye(4)
                 cam2lidar[:3, :3] = cam2lidar_r
-                cam2lidar[3, :3] = cam2lidar_t
+                cam2lidar[:3, 3] = cam2lidar_t
                 
                 intrinsic = cam_info['cam_intrinsic']
                 viewpad = np.eye(4)
@@ -101,6 +101,31 @@ class CustomNuScenesDataset(NuScenesDataset):
 
 
 @DATASETS.register_module()
+class CustomNuScenesDatasetVal(CustomNuScenesDataset):
+    """Custom NuScenes dataset for validation visualization."""
+
+    def __len__(self):
+        return 4
+    
+    def __getitem__(self, idx):
+        idx = 80
+        return super().__getitem__(idx)
+    
+    def evaluate(self,
+                 results,
+                 metric='bbox',
+                 logger=None,
+                 jsonfile_prefix=None,
+                 result_names=['pts_bbox'],
+                 show=False,
+                 out_dir=None,
+                 pipeline=None):
+        return {"bbox_mAP": 0.5, 
+                "bbox_mAP_50": 0.5, 
+                "bbox_mAP_75": 0.5}
+
+
+@DATASETS.register_module()
 class CustomNuScenesDatasetOverfit(CustomNuScenesDataset):
     """Custom NuScenes dataset for overfitting."""
 
@@ -108,7 +133,7 @@ class CustomNuScenesDatasetOverfit(CustomNuScenesDataset):
         return 1000
     
     def __getitem__(self, idx):
-        idx = 50
+        idx = 16934
         return super().__getitem__(idx)
     
 

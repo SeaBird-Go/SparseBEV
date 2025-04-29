@@ -19,7 +19,8 @@ class PhotometricLoss(BaseLoss):
     def __init__(
         self,
         weight=1.0,
-        input_dict=None
+        input_dict=None,
+        name='loss_rgb'
     ):
         super().__init__(weight)
 
@@ -32,6 +33,7 @@ class PhotometricLoss(BaseLoss):
             self.input_dict = input_dict
 
         self.loss_func = self.loss_rgb
+        self.loss_name = name
 
     def loss_rgb(self, pred_rgb, gt_rgb):
         loss = nn.functional.l1_loss(pred_rgb, gt_rgb)

@@ -32,10 +32,7 @@ voxel_size = [0.2, 0.2, 8]
 # arch config
 embed_dims = 256
 num_layers = 6
-num_query = 900
-num_frames = 8
 num_levels = 4
-num_points = 4
 
 img_backbone = dict(
     type='ResNet',
@@ -218,7 +215,7 @@ model = dict(
 )
 
 ida_aug_conf = {
-    'resize_lim': (0.38, 0.55),
+    'resize_lim': (0.44, 0.44),
     'final_dim': (256, 704),
     'bot_pct_lim': (0.0, 0.0),
     'rot_lim': (0.0, 0.0),
@@ -234,10 +231,6 @@ train_pipeline = [
         use_dim=5,
     ),
     dict(type='LoadMultiViewImageFromFiles', to_float32=False, color_type='color'),
-    # dict(type='LoadMultiViewImageFromMultiSweeps', sweeps_num=num_frames - 1),
-    # dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True, with_attr_label=False),
-    # dict(type='ObjectRangeFilter', point_cloud_range=point_cloud_range),
-    # dict(type='ObjectNameFilter', classes=class_names),
     dict(type='RandomTransformImage', ida_aug_conf=ida_aug_conf, training=True),
     dict(type="PrepapreImageInputs", img_size=render_size),
     dict(type="PointToMultiViewDepth",
@@ -254,20 +247,26 @@ train_pipeline = [
 ]
 
 test_pipeline = [
-    dict(type='LoadMultiViewImageFromFiles', to_float32=False, color_type='color'),
-    dict(type='LoadMultiViewImageFromMultiSweeps', sweeps_num=num_frames - 1, test_mode=True),
-    dict(type='RandomTransformImage', ida_aug_conf=ida_aug_conf, training=False),
     dict(
-        type='MultiScaleFlipAug3D',
-        img_scale=(1600, 900),
-        pts_scale_ratio=1,
-        flip=False,
-        transforms=[
-            dict(type='DefaultFormatBundle3D', class_names=class_names, with_label=False),
-            dict(type='Collect3D', keys=['img'], meta_keys=(
-                'filename', 'box_type_3d', 'ori_shape', 'img_shape', 'pad_shape',
-                'lidar2img', 'img_timestamp'))
-        ])
+        type="LoadPointsFromFile",
+        coord_type="LIDAR",
+        load_dim=5,
+        use_dim=5,
+    ),
+    dict(type='LoadMultiViewImageFromFiles', to_float32=False, color_type='color'),
+    dict(type='RandomTransformImage', ida_aug_conf=ida_aug_conf, training=False),
+    dict(type="PrepapreImageInputs", img_size=render_size),
+    dict(type="PointToMultiViewDepth",
+         render_size=render_size
+    ),
+    # dict(type='GlobalRotScaleTransImage', rot_range=[-0.3925, 0.3925], scale_ratio_range=[0.95, 1.05]),
+    dict(type='DefaultFormatBundle3D', class_names=class_names),
+    dict(type='Collect3D', 
+         keys=['img', 'K', 'inv_K', 'target_imgs', 
+               'render_gt_depth', 'projection_mat', 'lidar2cam'], 
+         meta_keys=(
+        'filename', 'ori_shape', 'img_shape', 'pad_shape', 
+        'lidar2img', 'img_timestamp',))
 ]
 
 data = dict(
@@ -285,7 +284,7 @@ data = dict(
         filter_empty_gt=False,
         box_type_3d='LiDAR'),
     val=dict(
-        type=dataset_type,
+        type=dataset_type + 'Val',
         data_root=dataset_root,
         ann_file=dataset_root + 'nuscenes_infos_val_sweep.pkl',
         pipeline=test_pipeline,
@@ -293,15 +292,15 @@ data = dict(
         modality=input_modality,
         test_mode=True,
         box_type_3d='LiDAR'),
-    test=dict(
-        type=dataset_type,
-        data_root=dataset_root,
-        ann_file=dataset_root + 'nuscenes_infos_test_sweep.pkl',
-        pipeline=test_pipeline,
-        classes=class_names,
-        modality=input_modality,
-        test_mode=True,
-        box_type_3d='LiDAR')
+    # test=dict(
+    #     type=dataset_type,
+    #     data_root=dataset_root,
+    #     ann_file=dataset_root + 'nuscenes_infos_test_sweep.pkl',
+    #     pipeline=test_pipeline,
+    #     classes=class_names,
+    #     modality=input_modality,
+    #     test_mode=True,
+    #     box_type_3d='LiDAR')
 )
 
 optimizer = dict(
@@ -329,7 +328,7 @@ lr_config = dict(
     min_lr_ratio=1e-3
 )
 total_epochs = 24
-batch_size = 1
+batch_size = 8
 
 # load pretrained weights
 load_from = 'pretrain/cascade_mask_rcnn_r50_fpn_coco-20e_20e_nuim_20201009_124951-40963960.pth'
@@ -345,15 +344,16 @@ checkpoint_config = dict(interval=1, max_keep_ckpts=3)
 log_config = dict(
     interval=1,
     hooks=[
-        dict(type='MyTextLoggerHook', interval=50, reset_flag=True),
-        dict(type='MyTensorboardLoggerHook', interval=500, reset_flag=True)
+        dict(type='TextLoggerHook', interval=10, reset_flag=True),
+        # dict(type='MyTensorboardLoggerHook', interval=500, reset_flag=True)
     ]
 )
 
 # evaluation
-eval_config = dict(interval=total_epochs,
-                   dynamic_intervals=[(22, 1)])
+# eval_config = dict(interval=total_epochs,
+#                    dynamic_intervals=[(22, 1)])
 
+eval_config = dict(interval=1)
 
 # other flags
 debug = False
