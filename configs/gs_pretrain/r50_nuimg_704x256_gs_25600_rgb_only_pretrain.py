@@ -2,10 +2,9 @@
 Copyright (c) 2025 by Haiming Zhang. All Rights Reserved.
 
 Author: Haiming Zhang
-Date: 2025-04-22 14:56:34
+Date: 2025-04-30 09:13:10
 Email: haimingzhang@link.cuhk.edu.cn
-Description: Add the pretrain network by using 25600 queries and depth only
-supervision.
+Description: 
 '''
 dataset_type = 'CustomNuScenesDataset'
 dataset_root = 'data/nuscenes/'
@@ -191,26 +190,18 @@ model = dict(
     loss_cfg = dict(
         type='MultiLoss',
         loss_cfgs=[
-            # dict(
-            #     type='PhotometricLoss',
-            #     weight=1.0,
-            #     input_dict=dict(
-            #         pred_rgb='render_rgb',
-            #         gt_rgb='target_imgs')
-            # ),
             dict(
-                type='DepthLoss',
-                weight=1.0,
-                input_dict=dict(
-                    pred_depth='render_depth',
-                    gt_depth='render_gt_depth')
+            type='PhotometricLoss',
+            weight=1.0,
+            input_dict=dict(
+                pred_rgb='render_rgb',
+                gt_rgb='target_imgs')
             )
         ]
     ),
     loss_input_conversion = dict(
         render_rgb="render_rgb",
-        render_depth="render_depth",
-        render_gt_depth="render_gt_depth"
+        target_imgs="target_imgs",
     )
 )
 
@@ -225,44 +216,24 @@ ida_aug_conf = {
 }
 
 train_pipeline = [
-    dict(
-        type="LoadPointsFromFile",
-        coord_type="LIDAR",
-        load_dim=5,
-        use_dim=5,
-    ),
     dict(type='LoadMultiViewImageFromFiles', to_float32=False, color_type='color'),
     dict(type='RandomTransformImage', ida_aug_conf=ida_aug_conf, training=True),
     dict(type="PrepapreImageInputs", img_size=render_size),
-    dict(type="PointToMultiViewDepth",
-         render_size=render_size
-    ),
     dict(type='DefaultFormatBundle3D', class_names=class_names),
     dict(type='Collect3D', 
-         keys=['img', 'K', 'inv_K', 'target_imgs', 
-               'render_gt_depth', 'projection_mat', 'lidar2cam'], 
+         keys=['img', 'K', 'inv_K', 'target_imgs', 'projection_mat', 'lidar2cam'], 
          meta_keys=(
         'filename', 'ori_shape', 'img_shape', 'pad_shape', 
         'lidar2img', 'img_timestamp',))
 ]
 
 test_pipeline = [
-    dict(
-        type="LoadPointsFromFile",
-        coord_type="LIDAR",
-        load_dim=5,
-        use_dim=5,
-    ),
     dict(type='LoadMultiViewImageFromFiles', to_float32=False, color_type='color'),
     dict(type='RandomTransformImage', ida_aug_conf=ida_aug_conf, training=False),
     dict(type="PrepapreImageInputs", img_size=render_size),
-    dict(type="PointToMultiViewDepth",
-         render_size=render_size
-    ),
     dict(type='DefaultFormatBundle3D', class_names=class_names),
     dict(type='Collect3D', 
-         keys=['img', 'K', 'inv_K', 'target_imgs', 
-               'render_gt_depth', 'projection_mat', 'lidar2cam'], 
+         keys=['img', 'K', 'inv_K', 'target_imgs', 'projection_mat', 'lidar2cam'], 
          meta_keys=(
         'filename', 'ori_shape', 'img_shape', 'pad_shape', 
         'lidar2img', 'img_timestamp',))

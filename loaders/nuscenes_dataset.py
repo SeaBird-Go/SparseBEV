@@ -108,7 +108,7 @@ class CustomNuScenesDatasetVal(CustomNuScenesDataset):
         return 4
     
     def __getitem__(self, idx):
-        idx = 80
+        idx = 1043
         return super().__getitem__(idx)
     
     def evaluate(self,
@@ -133,7 +133,8 @@ class CustomNuScenesDatasetOverfit(CustomNuScenesDataset):
         return 1000
     
     def __getitem__(self, idx):
-        idx = 16934
+        # idx = 16934
+        idx = 50
         return super().__getitem__(idx)
     
 

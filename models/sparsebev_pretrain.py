@@ -9,6 +9,7 @@ Description: Add the GaussianFormer pretraining network in the SparseBEV framewo
 import os
 import torch
 import numpy as np
+import logging
 from mmcv.runner import force_fp32, auto_fp16
 from mmcv.runner import get_dist_info
 from mmcv.runner.fp16_utils import cast_tensor_type
@@ -55,7 +56,7 @@ class SparseBEVPretrain(MVXTwoStageDetector):
         self.stop_prev_grad = stop_prev_grad
         self.color_aug = GpuPhotoMetricDistortion()
         self.grid_mask = GridMask(ratio=0.5, prob=0.7)
-        self.use_grid_mask = False
+        self.use_grid_mask = True
 
         if lifter is not None:
             self.lifter = builder.build_head(lifter)
@@ -264,8 +265,10 @@ class SparseBEVPretrain(MVXTwoStageDetector):
         ## visualize
         local_rank, _ = get_dist_info()
         if local_rank == 0:
-            save_dir = f'outputs/SparseBEVPretrain/r50_nuimg_704x256_gs_25600_rgb_only_pretrain_overfit_wo_grid_mask_864x1600/vis'
+            self.save_dir = os.path.dirname(logging.root.handlers[1].baseFilename)
+            save_dir = os.path.join(self.save_dir, "vis")
             os.makedirs(save_dir, exist_ok=True)
+            
             ## visualize the results
             render_rgb = result_dict['render_rgb']
             gt_img = kwargs['target_imgs']

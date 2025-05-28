@@ -63,6 +63,7 @@ class LoadMultiViewImageFromMultiSweeps(object):
                     results['img_timestamp'].append(results['img_timestamp'][j])
                     results['filename'].append(results['filename'][j])
                     results['lidar2img'].append(np.copy(results['lidar2img'][j]))
+                    results['cam_intrinsics'].append(np.copy(results['cam_intrinsics'][j]))
         else:
             if self.test_mode:
                 interval = self.test_interval
@@ -97,6 +98,7 @@ class LoadMultiViewImageFromMultiSweeps(object):
                         sweep[sensor]['sensor2global_rotation'],
                         sweep[sensor]['cam_intrinsic'],
                     ))
+                    results['cam_intrinsics'].append(sweep[sensor]['cam_intrinsic'])
 
         return results
 

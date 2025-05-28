@@ -241,7 +241,14 @@ class RandomTransformImage(object):
                 )
                 results['img'][i] = np.array(img).astype(np.uint8)
                 results['lidar2img'][i] = ida_mat @ results['lidar2img'][i]
-                results['cam_intrinsics'][i] = ida_mat @ results['cam_intrinsics'][i]
+                
+                if results['cam_intrinsics'][i].shape[0] == 3:
+                    _cam_intrinsics = np.eye(4)
+                    _cam_intrinsics[:3, :3] = results['cam_intrinsics'][i]
+                else:
+                    _cam_intrinsics = results['cam_intrinsics'][i]
+                
+                results['cam_intrinsics'][i] = ida_mat @ _cam_intrinsics
                 aug_mats.append(ida_mat)
 
         elif len(results['img']) == 6:

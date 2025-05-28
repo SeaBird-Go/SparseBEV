@@ -124,6 +124,7 @@ def main():
 
     logging.info('Creating model: %s' % cfgs.model.type)
     model = build_model(cfgs.model)
+    model.save_dir = work_dir
     model.init_weights()
     model.cuda()
     model.train()
